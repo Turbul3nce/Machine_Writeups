@@ -1,0 +1,10 @@
+# HTB Forest 
+# Easy Machine | AD 
+# Chandler Rose
+
+# Ran an nmap scan of the machine and found standard open ports for AD.
+# Ran linwinpwn without creds and gathered enum details.
+# Created a user list.
+# Found possible exploit "ZERO LOGON".
+# Using Zero logon exploit, I was able to get admin hash and evil-winrm in as admin.
+#ROOTED
