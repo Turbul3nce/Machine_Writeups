@@ -1,0 +1,27 @@
+# Nmap 7.80 scan initiated Sun Mar  5 13:41:13 2023 as: nmap -sV -sC -p- -o retired.scan 10.10.10.98
+Nmap scan report for 10.10.10.98
+Host is up (0.061s latency).
+Not shown: 65532 filtered ports
+PORT   STATE SERVICE VERSION
+21/tcp open  ftp     Microsoft ftpd
+| ftp-anon: Anonymous FTP login allowed (FTP code 230)
+|_Can't get directory listing: PASV failed: 425 Cannot open data connection.
+| ftp-syst: 
+|_  SYST: Windows_NT
+23/tcp open  telnet  Microsoft Windows XP telnetd
+| telnet-ntlm-info: 
+|   Target_Name: ACCESS
+|   NetBIOS_Domain_Name: ACCESS
+|   NetBIOS_Computer_Name: ACCESS
+|   DNS_Domain_Name: ACCESS
+|   DNS_Computer_Name: ACCESS
+|_  Product_Version: 6.1.7600
+80/tcp open  http    Microsoft IIS httpd 7.5
+| http-methods: 
+|_  Potentially risky methods: TRACE
+|_http-server-header: Microsoft-IIS/7.5
+|_http-title: MegaCorp
+Service Info: OSs: Windows, Windows XP; CPE: cpe:/o:microsoft:windows, cpe:/o:microsoft:windows_xp
+
+Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+# Nmap done at Sun Mar  5 13:43:14 2023 -- 1 IP address (1 host up) scanned in 120.24 seconds
